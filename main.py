@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse
-from rq import Queue, Worker, Connection
+from rq import Queue, Worker
 from rq.job import Job
 from redis import from_url as redis_from_url
 import os
@@ -10,7 +10,7 @@ from worker import generate_tts_task
 # --- App and Queue Setup ---
 app = FastAPI()
 
-# Connect to the Redis instance provided by Render
+# The main connection for the web process to enqueue jobs
 redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
 conn = redis_from_url(redis_url)
 q = Queue(connection=conn)
@@ -20,11 +20,16 @@ AUDIO_DIR = "/data/audio"
 
 # --- Worker Function ---
 def run_worker():
+    """
+    This function runs in a background thread and processes jobs from the queue.
+    """
     listen = ['default']
-    with Connection(conn): # Use the existing connection object
-        worker = Worker(map(Queue, listen))
-        print("Background worker started and listening for jobs...")
-        worker.work()
+    # It's good practice for a background thread to have its own Redis connection.
+    worker_conn = redis_from_url(os.getenv('REDIS_URL', 'redis://localhost:6379'))
+    # The Worker is initialized with the queues to listen on and a connection.
+    worker = Worker(map(Queue, listen), connection=worker_conn)
+    print("Background worker started and listening for jobs...")
+    worker.work()
 
 # --- FastAPI Endpoints ---
 @app.get("/")
