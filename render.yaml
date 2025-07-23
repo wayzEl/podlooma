@@ -1,0 +1,41 @@
+# Blueprint for a Web + Worker service on Render
+
+services:
+  # The Web Service (FastAPI)
+  - type: web
+    name: tts-api
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: REDIS_URL
+        # This will automatically use the URL from the Redis service below
+        fromService:
+          type: redis
+          name: tts-queue
+          property: connectionString
+
+  # The Background Worker (RQ)
+  - type: worker
+    name: tts-worker
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    # This command starts the RQ worker, telling it to listen on our queue
+    startCommand: "python worker.py"
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: tts-queue
+          property: connectionString
+
+  # The Redis instance for the queue
+  - type: redis
+    name: tts-queue
+    region: oregon
+    plan: free
+    maxmemoryPolicy: allkeys-lru # Recommended for free instances
