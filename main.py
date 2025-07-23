@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse
-from rq import Queue
+from rq import Queue, Worker, Connection
 from rq.job import Job
 from redis import from_url as redis_from_url
 import os
@@ -21,7 +21,7 @@ AUDIO_DIR = "/data/audio"
 # --- Worker Function ---
 def run_worker():
     listen = ['default']
-    with Connection(redis_from_url(redis_url)):
+    with Connection(conn): # Use the existing connection object
         worker = Worker(map(Queue, listen))
         print("Background worker started and listening for jobs...")
         worker.work()
