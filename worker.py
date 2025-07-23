@@ -1,4 +1,5 @@
 import os
+print("--- Starting worker.py ---")
 import base64
 from pydub import AudioSegment
 from google import genai
