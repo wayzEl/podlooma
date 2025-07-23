@@ -18,7 +18,7 @@ services:
           property: connectionString
       # Set the PYTHON_VERSION to a specific version if needed
       - key: PYTHON_VERSION
-        value: 3.9
+        value: 3.9.18
 
   # The Redis instance for the queue
   - type: redis
