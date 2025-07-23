@@ -3,13 +3,13 @@ import base64
 from pydub import AudioSegment
 from google import genai
 from google.genai import types
-import redis
-from rq import Worker, Queue, Connection
+from redis import from_url as redis_from_url
+from rq import Worker, Queue
 
 # The URL for the Redis instance provided by Render
 listen = ['default']
 redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
-conn = redis.from_url(redis_url)
+conn = redis_from_url(redis_url)
 
 def generate_tts_task(api_key, model, dialogue, voices):
     """

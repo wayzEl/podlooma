@@ -1,15 +1,16 @@
 from fastapi import FastAPI, Request, HTTPException
-from rq import Queue, Worker, Connection
-import redis
+from rq import Queue
+from redis import from_url as redis_from_url
 import os
 import threading
+from worker import generate_tts_task # Import the task function directly
 
 # --- App and Queue Setup ---
 app = FastAPI()
 
 # Connect to the Redis instance provided by Render
 redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
-conn = redis.from_url(redis_url)
+conn = redis_from_url(redis_url)
 q = Queue(connection=conn)
 
 # --- Worker Function ---
@@ -18,7 +19,7 @@ def run_worker():
     listen = ['default']
     # The 'worker.py' file still contains the task function, so we need to be able to import it.
     # We ensure the connection is established within the thread.
-    with Connection(redis.from_url(redis_url)):
+    with Connection(redis_from_url(redis_url)):
         # Create a worker that listens to the 'default' queue
         worker = Worker(map(Queue, listen))
         # The work() method is blocking, so it will run forever in this thread
