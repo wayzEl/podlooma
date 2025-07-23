@@ -94,6 +94,6 @@ if __name__ == '__main__':
     redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
     conn = from_url(redis_url)
 
-    with Connection(conn):
-        worker = Worker(map(Queue, listen))
-        worker.work()
+    # Initialize the worker with the queues to listen on and a connection.
+    worker = Worker(list(map(Queue, listen)), connection=conn)
+    worker.work()
