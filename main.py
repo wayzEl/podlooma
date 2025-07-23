@@ -5,6 +5,9 @@ from rq.job import Job
 from redis import from_url as redis_from_url
 import os
 import threading
+import time
+from redis import from_url as redis_from_url
+from rq import Queue, Worker
 from worker import generate_tts_task
 
 # --- App and Queue Setup ---
@@ -24,12 +27,19 @@ def run_worker():
     This function runs in a background thread and processes jobs from the queue.
     """
     listen = ['default']
-    # It's good practice for a background thread to have its own Redis connection.
     worker_conn = redis_from_url(os.getenv('REDIS_URL', 'redis://localhost:6379'))
-    # The Worker is initialized with a list of queue names and a connection.
     worker = Worker(listen, connection=worker_conn)
-    print("Background worker started and listening for jobs...")
-    worker.work()
+
+    # Run the worker in a loop with burst mode.
+    # This prevents it from installing signal handlers, avoiding the error.
+    while True:
+        try:
+            worker.work(burst=True)
+        except Exception as e:
+            print(f"Worker error: {e}")
+        # Sleep for a short duration to prevent a tight loop from consuming CPU
+        time.sleep(1)
+
 
 # --- FastAPI Endpoints ---
 @app.get("/")
