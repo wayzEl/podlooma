@@ -32,8 +32,8 @@ def read_root():
     return {"message": "TTS API with webhooks is running."}
 
 @app.post("/process-tts/")
-def queue_tts_job(request: Request):
-    data = request.json()
+async def queue_tts_job(request: Request):
+    data = await request.json()
     
     dialogue = data.get("dialogue")
     voices = data.get("voices")
