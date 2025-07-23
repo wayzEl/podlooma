@@ -4,7 +4,7 @@ from pydub import AudioSegment
 from google import genai
 from google.genai import types
 from redis import from_url as redis_from_url
-from rq import Worker, Queue, Connection
+from rq import Worker, Queue
 from rq import get_current_job
 import requests
 
@@ -94,6 +94,6 @@ if __name__ == '__main__':
     redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
     conn = from_url(redis_url)
 
-    # Initialize the worker with the queues to listen on and a connection.
-    worker = Worker(list(map(Queue, listen)), connection=conn)
+    # The worker is initialized with a list of queue names and a connection.
+    worker = Worker(listen, connection=conn)
     worker.work()
