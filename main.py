@@ -26,8 +26,8 @@ def run_worker():
     listen = ['default']
     # It's good practice for a background thread to have its own Redis connection.
     worker_conn = redis_from_url(os.getenv('REDIS_URL', 'redis://localhost:6379'))
-    # The Worker is initialized with the queues to listen on and a connection.
-    worker = Worker(map(Queue, listen), connection=worker_conn)
+    # The Worker is initialized with a list of queue names and a connection.
+    worker = Worker(listen, connection=worker_conn)
     print("Background worker started and listening for jobs...")
     worker.work()
 
