@@ -8,7 +8,6 @@ import requests
 
 # The directory on the persistent disk where we will store audio files
 AUDIO_DIR = "/data/audio"
-os.makedirs(AUDIO_DIR, exist_ok=True)
 
 def generate_tts_task(api_key, model, dialogue, voices, webhook_url, episode_id, base_url):
     """
