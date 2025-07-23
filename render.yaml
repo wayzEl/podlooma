@@ -39,3 +39,4 @@ services:
     region: oregon
     plan: free
     maxmemoryPolicy: allkeys-lru # Recommended for free instances
+    ipAllowList: [] # Allow access from other services in the same Render account
