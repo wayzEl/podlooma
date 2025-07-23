@@ -1,14 +1,17 @@
-# Blueprint for a Web Service with a Background Task Thread on Render's Free Plan
+# The definitive Blueprint for a Web + Worker architecture on Render's Free Plan
 
 services:
-  # The Web Service (FastAPI + Background RQ Worker)
+  # The Web Service for the FastAPI application
   - type: web
     name: tts-api-service
     env: python
     region: oregon
     plan: free
+    disks:
+      - name: audio-files
+        mountPath: /data/audio
+        sizeGB: 1
     buildCommand: "pip install -r requirements.txt"
-    # The start command now runs our combined web server and worker process
     startCommand: "uvicorn main:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: REDIS_URL
@@ -16,7 +19,24 @@ services:
           type: redis
           name: tts-queue
           property: connectionString
-      # Set the PYTHON_VERSION to a specific version if needed
+      - key: PYTHON_VERSION
+        value: 3.9.18
+
+  # A second "web" service that we will command to act as our RQ Worker
+  - type: web
+    name: tts-worker-service
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    # This is the key: we override the start command to run the worker script
+    startCommand: "python worker.py"
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: tts-queue
+          property: connectionString
       - key: PYTHON_VERSION
         value: 3.9.18
 
@@ -26,4 +46,4 @@ services:
     region: oregon
     plan: free
     maxmemoryPolicy: allkeys-lru
-    ipAllowList: [] # Allow access from other services in the same Render account
+    ipAllowList: []

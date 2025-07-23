@@ -3,6 +3,8 @@ import base64
 from pydub import AudioSegment
 from google import genai
 from google.genai import types
+from redis import from_url as redis_from_url
+from rq import Worker, Queue, Connection
 from rq import get_current_job
 import requests
 
@@ -64,12 +66,10 @@ def generate_tts_task(api_key, model, dialogue, voices, webhook_url, episode_id,
         file_path = os.path.join(AUDIO_DIR, file_name)
         audio_segment.export(file_path, format="mp3")
         
-        # Construct the final public URL for the audio file
         audio_url = f"{base_url}/audio/{file_name}"
         
         print(f"Job {job.id} completed. Notifying webhook: {webhook_url}")
 
-        # Send the success payload to the webhook
         webhook_payload = {
             "episode_id": episode_id,
             "status": "success",
@@ -81,7 +81,6 @@ def generate_tts_task(api_key, model, dialogue, voices, webhook_url, episode_id,
 
     except Exception as e:
         print(f"Job {job.id} failed: {e}")
-        # Send the failure payload to the webhook
         webhook_payload = {
             "episode_id": episode_id,
             "status": "failed",
@@ -89,3 +88,12 @@ def generate_tts_task(api_key, model, dialogue, voices, webhook_url, episode_id,
         }
         requests.post(webhook_url, json=webhook_payload)
         raise
+
+if __name__ == '__main__':
+    listen = ['default']
+    redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
+    conn = from_url(redis_url)
+
+    with Connection(conn):
+        worker = Worker(map(Queue, listen))
+        worker.work()
