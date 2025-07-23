@@ -28,12 +28,13 @@ def run_worker():
     """
     listen = ['default']
     worker_conn = redis_from_url(os.getenv('REDIS_URL', 'redis://localhost:6379'))
-    worker = Worker(listen, connection=worker_conn)
-
+    
     # Run the worker in a loop with burst mode.
     # This prevents it from installing signal handlers, avoiding the error.
     while True:
         try:
+            # Create a new worker on each iteration to avoid registration conflicts
+            worker = Worker(listen, connection=worker_conn)
             worker.work(burst=True)
         except Exception as e:
             print(f"Worker error: {e}")
