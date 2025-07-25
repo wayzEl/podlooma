@@ -1,8 +1,8 @@
 {
   "version": 1,
+  "description": "Optimized routes for TTS API endpoints only",
   "include": [
-    "/api/*",
-    "/hello"
+    "/api/*"
   ],
   "exclude": [
     "/api/_*"
