@@ -23,7 +23,7 @@ wrangler kv namespace create "AUDIO_FILES" --preview || echo "Preview KV namespa
 
 # Deploy to Cloudflare Pages
 echo "🌍 Deploying to Cloudflare Pages..."
-wrangler pages deploy . --project-name podlooma
+wrangler pages deploy cloudflare --project-name podlooma
 
 echo "✅ Deployment complete!"
 echo ""
