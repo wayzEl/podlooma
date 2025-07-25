@@ -1,11 +1,25 @@
 name = "podlooma-tts"
 pages_build_output_dir = "./"
+compatibility_date = "2024-07-22"
+compatibility_flags = ["nodejs_compat"]
 
-# No kv_namespaces here - they should be configured via dashboard for Pages
-# Functions will be automatically detected from the functions/ directory
-
+# Build configuration
 [build]
 command = ""
+cwd = "./"
 
-# For Pages Functions, KV bindings are configured in the Cloudflare dashboard
-# under Settings → Functions → KV namespace bindings 
+# Environment variables (will be set in Cloudflare dashboard)
+[env.production.vars]
+# GOOGLE_API_KEY = "your-api-key-here" # Set this in Cloudflare dashboard
+
+[env.preview.vars]
+# GOOGLE_API_KEY = "your-preview-api-key-here" # Set this in Cloudflare dashboard
+
+# KV namespace bindings for Pages Functions
+# These need to be configured in Cloudflare Pages dashboard under Settings → Functions
+# Variable name: AUDIO_FILES
+# KV namespace: The namespace ID from `wrangler kv:namespace create "AUDIO_FILES"`
+
+# Note: For Pages Functions, KV bindings are configured in the Cloudflare dashboard
+# Go to: Pages project → Settings → Functions → KV namespace bindings
+# Add binding: Variable name "AUDIO_FILES" → Select your KV namespace 

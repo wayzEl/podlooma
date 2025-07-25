@@ -13,15 +13,33 @@ fi
 echo "🔐 Checking Cloudflare authentication..."
 wrangler whoami || wrangler login
 
+# Create KV namespace for audio storage if it doesn't exist
+echo "🗄️ Setting up KV namespace for audio storage..."
+echo "Creating AUDIO_FILES KV namespace..."
+wrangler kv:namespace create "AUDIO_FILES" || echo "KV namespace may already exist"
+
+echo "Creating preview AUDIO_FILES KV namespace..."
+wrangler kv:namespace create "AUDIO_FILES" --preview || echo "Preview KV namespace may already exist"
+
 # Deploy to Cloudflare Pages
 echo "🌍 Deploying to Cloudflare Pages..."
 wrangler pages deploy . --project-name podlooma-tts
 
 echo "✅ Deployment complete!"
+echo ""
 echo "🌐 Your TTS API will be available at: https://podlooma-tts.pages.dev"
 echo ""
-echo "🔧 Next step: Create KV namespace for audio storage"
-echo "   Run: wrangler kv:namespace create \"AUDIO_FILES\""
-echo "   Then bind it in Cloudflare Pages Settings → Functions"
+echo "🔧 Important Next Steps:"
+echo "   1. Go to Cloudflare Dashboard → Pages → podlooma-tts → Settings → Functions"
+echo "   2. Add KV namespace binding:"
+echo "      - Variable name: AUDIO_FILES"
+echo "      - KV namespace: Select the 'AUDIO_FILES' namespace created above"
 echo ""
-echo "✨ No environment variables needed - users provide their own API keys!" 
+echo "🔑 Optional Environment Variables (Set in Pages Settings → Environment variables):"
+echo "   - GOOGLE_API_KEY: Your Google API key (can also be provided per request)"
+echo ""
+echo "✅ Test your deployment:"
+echo "   GET  https://podlooma-tts.pages.dev/api/test"
+echo "   POST https://podlooma-tts.pages.dev/api/tts"
+echo ""
+echo "✨ Ready to generate multi-speaker TTS audio!" 
