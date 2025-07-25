@@ -1,12 +1,7 @@
-name = "podlooma-tts"
+name = "podlooma"
 pages_build_output_dir = "./"
 compatibility_date = "2024-07-22"
 compatibility_flags = ["nodejs_compat"]
-
-# Build configuration
-[build]
-command = ""
-cwd = "./"
 
 # Environment variables (will be set in Cloudflare dashboard)
 [env.production.vars]
