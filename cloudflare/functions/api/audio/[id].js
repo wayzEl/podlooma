@@ -63,10 +63,10 @@ export async function onRequestGet({ params, env, request }) {
       });
     }
 
-    // Convert base64 to binary
-    let audioBuffer;
+    // Convert base64 to binary (PCM data from Google TTS)
+    let pcmData;
     try {
-      audioBuffer = Uint8Array.from(atob(audioData), c => c.charCodeAt(0));
+      pcmData = Uint8Array.from(atob(audioData), c => c.charCodeAt(0));
     } catch (decodeError) {
       console.error('Base64 decode error:', decodeError);
       return new Response(JSON.stringify({
@@ -81,6 +81,10 @@ export async function onRequestGet({ params, env, request }) {
       });
     }
 
+    // Convert PCM to WAV format
+    // Google TTS returns 16-bit Linear PCM at 24kHz
+    const wavBuffer = pcmToWav(pcmData, 24000, 16, 1);
+
     // Determine if this is a download request
     const userAgent = request.headers.get('User-Agent') || '';
     const isDownload = request.url.includes('download=true') || 
@@ -88,11 +92,11 @@ export async function onRequestGet({ params, env, request }) {
                       userAgent.includes('wget');
 
     // Return audio file with appropriate headers
-    return new Response(audioBuffer, {
+    return new Response(wavBuffer, {
       status: 200,
       headers: {
         "Content-Type": "audio/wav",
-        "Content-Length": audioBuffer.length.toString(),
+        "Content-Length": wavBuffer.length.toString(),
         "Content-Disposition": isDownload 
           ? `attachment; filename="${audioId}.wav"` 
           : `inline; filename="${audioId}.wav"`,
@@ -115,6 +119,48 @@ export async function onRequestGet({ params, env, request }) {
       }
     });
   }
+}
+
+// Convert PCM data to WAV format
+function pcmToWav(pcmData, sampleRate, bitsPerSample, numChannels) {
+  const blockAlign = numChannels * bitsPerSample / 8;
+  const byteRate = sampleRate * blockAlign;
+  const dataSize = pcmData.length;
+  const fileSize = 36 + dataSize;
+
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  // RIFF chunk descriptor
+  const writeString = (offset, string) => {
+    for (let i = 0; i < string.length; i++) {
+      view.setUint8(offset + i, string.charCodeAt(i));
+    }
+  };
+
+  writeString(0, 'RIFF');                    // ChunkID
+  view.setUint32(4, fileSize, true);        // ChunkSize (little-endian)
+  writeString(8, 'WAVE');                   // Format
+
+  // fmt sub-chunk
+  writeString(12, 'fmt ');                  // Subchunk1ID
+  view.setUint32(16, 16, true);             // Subchunk1Size (16 for PCM)
+  view.setUint16(20, 1, true);              // AudioFormat (1 for PCM)
+  view.setUint16(22, numChannels, true);    // NumChannels
+  view.setUint32(24, sampleRate, true);     // SampleRate
+  view.setUint32(28, byteRate, true);       // ByteRate
+  view.setUint16(32, blockAlign, true);     // BlockAlign
+  view.setUint16(34, bitsPerSample, true);  // BitsPerSample
+
+  // data sub-chunk
+  writeString(36, 'data');                  // Subchunk2ID
+  view.setUint32(40, dataSize, true);       // Subchunk2Size
+
+  // Copy PCM data
+  const uint8View = new Uint8Array(buffer);
+  uint8View.set(pcmData, 44);
+
+  return uint8View;
 }
 
 // Handle CORS preflight for audio endpoint

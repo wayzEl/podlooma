@@ -51,7 +51,7 @@ export async function onRequestPost({ request, env }) {
     // Generate unique job ID
     const jobId = crypto.randomUUID();
 
-    // Build the Google TTS request
+    // Build speaker voice configurations
     const speakerVoiceConfigs = Object.entries(voices).map(([speaker, voice]) => ({
       speaker: speaker,
       voiceConfig: {
@@ -61,18 +61,51 @@ export async function onRequestPost({ request, env }) {
       }
     }));
 
-    const ttsRequest = {
-      model: model,
-      contents: [{ parts: [{ text: dialogue }] }],
-      generationConfig: {
-        responseModalities: ["AUDIO"],
-        speechConfig: {
-          multiSpeakerVoiceConfig: {
-            speakerVoiceConfigs: speakerVoiceConfigs
+    // Determine if this is single or multi-speaker
+    const isSingleSpeaker = speakerVoiceConfigs.length === 1;
+    const isMultiSpeaker = speakerVoiceConfigs.length >= 2;
+
+    // Build the appropriate request format
+    let ttsRequest;
+    
+    if (isSingleSpeaker) {
+      // For single speaker, use standard TTS format (not multi-speaker)
+      ttsRequest = {
+        contents: [{ 
+          parts: [{ text: dialogue }] 
+        }],
+        generationConfig: {
+          responseModalities: ["AUDIO"],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: {
+                voiceName: speakerVoiceConfigs[0].voiceConfig.prebuiltVoiceConfig.voiceName
+              }
+            }
           }
         }
-      }
-    };
+      };
+    } else if (isMultiSpeaker) {
+      // For multi-speaker, use multi-speaker format
+      ttsRequest = {
+        contents: [{ 
+          parts: [{ text: dialogue }] 
+        }],
+        generationConfig: {
+          responseModalities: ["AUDIO"],
+          speechConfig: {
+            multiSpeakerVoiceConfig: {
+              speakerVoiceConfigs: speakerVoiceConfigs
+            }
+          }
+        }
+      };
+    } else {
+      throw new Error("At least one voice must be specified");
+    }
+
+    console.log(`Using ${isSingleSpeaker ? 'single' : 'multi'}-speaker TTS with ${speakerVoiceConfigs.length} voice(s)`);
+    console.log('Sending TTS request:', JSON.stringify(ttsRequest, null, 2));
 
     // Call Google TTS API
     const googleResponse = await fetch(
@@ -86,8 +119,12 @@ export async function onRequestPost({ request, env }) {
       }
     );
 
+    console.log('Google API Response Status:', googleResponse.status);
+    console.log('Google API Response Headers:', [...googleResponse.headers.entries()]);
+
     if (!googleResponse.ok) {
       const errorText = await googleResponse.text();
+      console.log('Google API Error Response:', errorText);
       throw new Error(`Google API error: ${googleResponse.status} - ${errorText}`);
     }
 
@@ -97,6 +134,7 @@ export async function onRequestPost({ request, env }) {
     const audioData = ttsResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     
     if (!audioData) {
+      console.log('No audio data found in Google TTS response');
       throw new Error("No audio data in response from Google TTS API");
     }
 
