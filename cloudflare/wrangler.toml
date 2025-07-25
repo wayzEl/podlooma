@@ -1,15 +1,11 @@
-name = "tts-api"
+name = "podlooma-tts"
 pages_build_output_dir = "./"
 
-[env.production]
-kv_namespaces = [
-  { binding = "AUDIO_FILES", id = "your-kv-namespace-id" }
-]
+# No kv_namespaces here - they should be configured via dashboard for Pages
+# Functions will be automatically detected from the functions/ directory
 
-[env.production.vars]
-# Environment variables will be set in Cloudflare dashboard
+[build]
+command = ""
 
-[[env.production.kv_namespaces]]
-binding = "AUDIO_FILES"
-preview_id = "your-preview-kv-id"
-id = "your-production-kv-id" 
+# For Pages Functions, KV bindings are configured in the Cloudflare dashboard
+# under Settings → Functions → KV namespace bindings 
