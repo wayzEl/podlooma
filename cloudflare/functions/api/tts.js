@@ -1,10 +1,8 @@
-// Cloudflare Pages Function for TTS Generation
+// Cloudflare Pages Function for TTS Generation - Worker Trigger
 export async function onRequestPost({ request, env }) {
-  let requestBody = null;
-  
   try {
     // Parse the incoming request
-    requestBody = await request.json();
+    const requestBody = await request.json();
     const { dialogue, voices, model, api_key, webhook_url, episode_id } = requestBody;
 
     // Validate required fields
@@ -52,15 +50,62 @@ export async function onRequestPost({ request, env }) {
     const jobId = crypto.randomUUID();
     const audioUrl = `https://${request.headers.get('host')}/api/audio/${jobId}`;
 
-    console.log(`🔄 Starting TTS processing for job ${jobId}`);
+    console.log(`🚀 Triggering Worker for TTS job ${jobId}`);
 
-    // Start background processing (fire and forget)
-    processTTSAsync(jobId, audioUrl, dialogue, voices, model, api_key, webhook_url, episode_id, env)
-      .catch(error => {
-        console.error(`Background TTS processing failed for job ${jobId}:`, error);
+    // Prepare job data for Worker
+    const jobData = {
+      job_id: jobId,
+      dialogue,
+      voices,
+      model,
+      webhook_url,
+      episode_id,
+      audio_url: audioUrl
+    };
+
+    // Trigger the Worker asynchronously
+    const workerUrl = 'https://podlooma-tts-worker.lunanipersonal.workers.dev/tts-process';
+    
+    try {
+      const workerResponse = await fetch(workerUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(jobData)
       });
 
-    // Return immediate response with job ID
+      if (!workerResponse.ok) {
+        const errorText = await workerResponse.text();
+        console.error('Worker trigger failed:', workerResponse.status, errorText);
+        throw new Error(`Worker failed to accept job: ${workerResponse.status}`);
+      }
+
+      console.log(`✅ Worker accepted TTS job ${jobId}`);
+    } catch (workerError) {
+      console.error('Failed to trigger Worker:', workerError);
+      
+      // Send immediate failure webhook since Worker couldn't be triggered
+      try {
+        await fetch(webhook_url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            episode_id: episode_id,
+            status: "failed",
+            error: `Failed to trigger TTS processing: ${workerError.message}`,
+            job_id: jobId,
+            timestamp: new Date().toISOString()
+          })
+        });
+      } catch (webhookError) {
+        console.error('Failed to send failure webhook:', webhookError);
+      }
+      
+      throw workerError;
+    }
+
+    // Return immediate response
     return new Response(JSON.stringify({
       status: "processing",
       job_id: jobId,
@@ -76,7 +121,7 @@ export async function onRequestPost({ request, env }) {
     });
 
   } catch (error) {
-    console.error('TTS Error:', error);
+    console.error('TTS Trigger Error:', error);
     
     return new Response(JSON.stringify({
       error: error.message,
@@ -88,198 +133,6 @@ export async function onRequestPost({ request, env }) {
         "Access-Control-Allow-Origin": "*"
       }
     });
-  }
-}
-
-// Background TTS processing function
-async function processTTSAsync(jobId, audioUrl, dialogue, voices, model, api_key, webhook_url, episode_id, env) {
-  try {
-    // Build speaker voice configurations
-    const speakerVoiceConfigs = Object.entries(voices).map(([speaker, voice]) => ({
-      speaker: speaker,
-      voiceConfig: {
-        prebuiltVoiceConfig: {
-          voiceName: voice
-        }
-      }
-    }));
-
-    // Determine if this is single or multi-speaker
-    const isSingleSpeaker = speakerVoiceConfigs.length === 1;
-    const isMultiSpeaker = speakerVoiceConfigs.length >= 2;
-
-    // Build the appropriate request format
-    let ttsRequest;
-    
-    if (isSingleSpeaker) {
-      // For single speaker, use standard TTS format (not multi-speaker)
-      ttsRequest = {
-        contents: [{ 
-          parts: [{ text: dialogue }] 
-        }],
-        generationConfig: {
-          responseModalities: ["AUDIO"],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: {
-                voiceName: speakerVoiceConfigs[0].voiceConfig.prebuiltVoiceConfig.voiceName
-              }
-            }
-          }
-        }
-      };
-    } else if (isMultiSpeaker) {
-      // For multi-speaker, use multi-speaker format
-      ttsRequest = {
-        contents: [{ 
-          parts: [{ text: dialogue }] 
-        }],
-        generationConfig: {
-          responseModalities: ["AUDIO"],
-          speechConfig: {
-            multiSpeakerVoiceConfig: {
-              speakerVoiceConfigs: speakerVoiceConfigs
-            }
-          }
-        }
-      };
-    } else {
-      throw new Error("At least one voice must be specified");
-    }
-
-    console.log(`Using ${isSingleSpeaker ? 'single' : 'multi'}-speaker TTS with ${speakerVoiceConfigs.length} voice(s)`);
-    console.log('Sending TTS request:', JSON.stringify(ttsRequest, null, 2));
-
-    // Call Google TTS API
-    const googleResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${api_key}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(ttsRequest)
-      }
-    );
-
-    console.log('Google API Response Status:', googleResponse.status);
-    console.log('Google API Response Headers:', [...googleResponse.headers.entries()]);
-
-    if (!googleResponse.ok) {
-      const errorText = await googleResponse.text();
-      console.log('Google API Error Response:', errorText);
-      
-      // Send failure webhook
-      const failurePayload = {
-        episode_id: episode_id,
-        status: "failed",
-        error: `Google API error: ${googleResponse.status} - ${errorText}`,
-        job_id: jobId,
-        timestamp: new Date().toISOString()
-      };
-
-      // Send failure webhook (don't await)
-      fetch(webhook_url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(failurePayload)
-      }).catch(err => console.error('Failure webhook error:', err));
-
-      throw new Error(`Google API error: ${googleResponse.status} - ${errorText}`);
-    }
-
-    const ttsResponse = await googleResponse.json();
-    
-    // Extract audio data
-    const audioData = ttsResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    
-    if (!audioData) {
-      console.log('No audio data found in Google TTS response');
-      
-      // Send failure webhook
-      const failurePayload = {
-        episode_id: episode_id,
-        status: "failed",
-        error: "No audio data in response from Google TTS API",
-        job_id: jobId,
-        timestamp: new Date().toISOString()
-      };
-
-      // Send failure webhook (don't await)
-      fetch(webhook_url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(failurePayload)
-      }).catch(err => console.error('Failure webhook error:', err));
-
-      throw new Error("No audio data in response from Google TTS API");
-    }
-
-    // Store the audio data in KV for retrieval
-    if (env.AUDIO_FILES) {
-      await env.AUDIO_FILES.put(jobId, audioData, {
-        expirationTtl: 86400 // Expire after 24 hours
-      });
-      console.log(`✅ Audio stored in KV for job ${jobId}`);
-    } else {
-      console.warn('AUDIO_FILES KV namespace not configured');
-      throw new Error('Audio storage not configured');
-    }
-
-    // Send SUCCESS webhook notification
-    const webhookPayload = {
-      episode_id: episode_id,
-      status: "completed",
-      audio_url: audioUrl,
-      job_id: jobId,
-      timestamp: new Date().toISOString()
-    };
-
-    console.log(`🔔 Sending success webhook for job ${jobId}`);
-    
-    try {
-      const webhookResponse = await fetch(webhook_url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(webhookPayload)
-      });
-
-      if (webhookResponse.ok) {
-        console.log(`✅ Success webhook sent for job ${jobId}`);
-      } else {
-        console.error(`❌ Webhook failed for job ${jobId}: ${webhookResponse.status}`);
-      }
-    } catch (err) {
-      console.error(`❌ Webhook error for job ${jobId}:`, err);
-    }
-
-  } catch (error) {
-    console.error(`Background TTS processing error for job ${jobId}:`, error);
-    
-    // Send failure webhook for background processing errors
-    try {
-      const failurePayload = {
-        episode_id: episode_id,
-        status: "failed",
-        error: error.message,
-        job_id: jobId,
-        timestamp: new Date().toISOString()
-      };
-
-      const webhookResponse = await fetch(webhook_url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(failurePayload)
-      });
-
-      if (webhookResponse.ok) {
-        console.log(`✅ Failure webhook sent for job ${jobId}`);
-      } else {
-        console.error(`❌ Failure webhook failed for job ${jobId}`);
-      }
-    } catch (webhookError) {
-      console.error(`❌ Failed to send failure webhook for job ${jobId}:`, webhookError);
-    }
   }
 }
 

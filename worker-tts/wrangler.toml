@@ -1,0 +1,25 @@
+name = "podlooma-tts-worker"
+main = "src/index.js"
+compatibility_date = "2024-07-22"
+
+# KV namespace bindings
+[[kv_namespaces]]
+binding = "AUDIO_FILES"
+id = "e3726e8a1256433fab9ba49c320ea33e"
+
+# Environment variables
+[vars]
+# Add any non-sensitive environment variables here
+
+# Secrets (set via wrangler secret put)
+# GOOGLE_API_KEY will be set as a secret
+
+[env.production]
+[[env.production.kv_namespaces]]
+binding = "AUDIO_FILES"
+id = "e3726e8a1256433fab9ba49c320ea33e"
+
+[env.staging]
+[[env.staging.kv_namespaces]]
+binding = "AUDIO_FILES"
+id = "1e69a6777a514c4b9644763e49065a73" 
