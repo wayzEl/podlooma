@@ -50,6 +50,9 @@ export async function onRequestPost({ request, env }) {
 
     // Generate unique job ID
     const jobId = crypto.randomUUID();
+    const audioUrl = `https://${request.headers.get('host')}/api/audio/${jobId}`;
+
+    console.log(`🔄 Starting TTS processing for job ${jobId}`);
 
     // Build speaker voice configurations
     const speakerVoiceConfigs = Object.entries(voices).map(([speaker, voice]) => ({
@@ -125,6 +128,23 @@ export async function onRequestPost({ request, env }) {
     if (!googleResponse.ok) {
       const errorText = await googleResponse.text();
       console.log('Google API Error Response:', errorText);
+      
+      // Send failure webhook
+      const failurePayload = {
+        episode_id: episode_id,
+        status: "failed",
+        error: `Google API error: ${googleResponse.status} - ${errorText}`,
+        job_id: jobId,
+        timestamp: new Date().toISOString()
+      };
+
+      // Send failure webhook (don't await)
+      fetch(webhook_url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(failurePayload)
+      }).catch(err => console.error('Failure webhook error:', err));
+
       throw new Error(`Google API error: ${googleResponse.status} - ${errorText}`);
     }
 
@@ -135,42 +155,76 @@ export async function onRequestPost({ request, env }) {
     
     if (!audioData) {
       console.log('No audio data found in Google TTS response');
+      
+      // Send failure webhook
+      const failurePayload = {
+        episode_id: episode_id,
+        status: "failed",
+        error: "No audio data in response from Google TTS API",
+        job_id: jobId,
+        timestamp: new Date().toISOString()
+      };
+
+      // Send failure webhook (don't await)
+      fetch(webhook_url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(failurePayload)
+      }).catch(err => console.error('Failure webhook error:', err));
+
       throw new Error("No audio data in response from Google TTS API");
     }
-
-    // Store audio in Cloudflare KV
-    const audioUrl = `https://${request.headers.get('host')}/api/audio/${jobId}`;
 
     // Store the audio data in KV for retrieval
     if (env.AUDIO_FILES) {
       await env.AUDIO_FILES.put(jobId, audioData, {
         expirationTtl: 86400 // Expire after 24 hours
       });
+      console.log(`✅ Audio stored in KV for job ${jobId}`);
     } else {
       console.warn('AUDIO_FILES KV namespace not configured');
+      throw new Error('Audio storage not configured');
     }
 
-    // Send webhook notification
+    // Send SUCCESS webhook notification (asynchronously)
     const webhookPayload = {
       episode_id: episode_id,
-      status: "success",
+      status: "completed",
       audio_url: audioUrl,
       job_id: jobId,
       timestamp: new Date().toISOString()
     };
 
-    // Send webhook asynchronously (don't wait for it)
-    fetch(webhook_url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(webhookPayload)
-    }).catch(err => console.error('Webhook error:', err));
+    console.log(`🔔 Sending success webhook for job ${jobId}`);
+    
+    // Send webhook and wait for it to complete
+    let webhookStatus = "pending";
+    try {
+      const webhookResponse = await fetch(webhook_url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(webhookPayload)
+      });
 
-    // Return immediate response
+      if (webhookResponse.ok) {
+        console.log(`✅ Success webhook sent for job ${jobId}`);
+        webhookStatus = "sent";
+      } else {
+        console.error(`❌ Webhook failed for job ${jobId}: ${webhookResponse.status}`);
+        webhookStatus = "failed";
+      }
+    } catch (err) {
+      console.error(`❌ Webhook error for job ${jobId}:`, err);
+      webhookStatus = "error";
+    }
+
+    // Return job ID after webhook is sent
     return new Response(JSON.stringify({
       status: "completed",
       job_id: jobId,
+      message: `TTS completed. Webhook ${webhookStatus}.`,
       audio_url: audioUrl,
+      webhook_status: webhookStatus,
       timestamp: new Date().toISOString()
     }), {
       status: 200,
@@ -185,6 +239,7 @@ export async function onRequestPost({ request, env }) {
     
     // Send failure webhook if possible and request body was parsed
     if (requestBody?.webhook_url && requestBody?.episode_id) {
+      const jobId = crypto.randomUUID();
       fetch(requestBody.webhook_url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -192,6 +247,7 @@ export async function onRequestPost({ request, env }) {
           episode_id: requestBody.episode_id,
           status: "failed",
           error: error.message,
+          job_id: jobId,
           timestamp: new Date().toISOString()
         })
       }).catch(() => {
@@ -222,4 +278,4 @@ export async function onRequestOptions() {
       "Access-Control-Allow-Headers": "Content-Type",
     },
   });
-} 
+}
