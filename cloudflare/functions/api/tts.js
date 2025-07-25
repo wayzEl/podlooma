@@ -54,6 +54,46 @@ export async function onRequestPost({ request, env }) {
 
     console.log(`🔄 Starting TTS processing for job ${jobId}`);
 
+    // Start background processing (fire and forget)
+    processTTSAsync(jobId, audioUrl, dialogue, voices, model, api_key, webhook_url, episode_id, env)
+      .catch(error => {
+        console.error(`Background TTS processing failed for job ${jobId}:`, error);
+      });
+
+    // Return immediate response with job ID
+    return new Response(JSON.stringify({
+      status: "processing",
+      job_id: jobId,
+      message: "TTS generation started. You will receive a webhook when complete.",
+      audio_url: audioUrl,
+      timestamp: new Date().toISOString()
+    }), {
+      status: 202, // 202 Accepted
+      headers: { 
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*"
+      }
+    });
+
+  } catch (error) {
+    console.error('TTS Error:', error);
+    
+    return new Response(JSON.stringify({
+      error: error.message,
+      timestamp: new Date().toISOString()
+    }), {
+      status: 500,
+      headers: { 
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*"
+      }
+    });
+  }
+}
+
+// Background TTS processing function
+async function processTTSAsync(jobId, audioUrl, dialogue, voices, model, api_key, webhook_url, episode_id, env) {
+  try {
     // Build speaker voice configurations
     const speakerVoiceConfigs = Object.entries(voices).map(([speaker, voice]) => ({
       speaker: speaker,
@@ -186,7 +226,7 @@ export async function onRequestPost({ request, env }) {
       throw new Error('Audio storage not configured');
     }
 
-    // Send SUCCESS webhook notification (asynchronously)
+    // Send SUCCESS webhook notification
     const webhookPayload = {
       episode_id: episode_id,
       status: "completed",
@@ -197,8 +237,6 @@ export async function onRequestPost({ request, env }) {
 
     console.log(`🔔 Sending success webhook for job ${jobId}`);
     
-    // Send webhook and wait for it to complete
-    let webhookStatus = "pending";
     try {
       const webhookResponse = await fetch(webhook_url, {
         method: 'POST',
@@ -208,63 +246,40 @@ export async function onRequestPost({ request, env }) {
 
       if (webhookResponse.ok) {
         console.log(`✅ Success webhook sent for job ${jobId}`);
-        webhookStatus = "sent";
       } else {
         console.error(`❌ Webhook failed for job ${jobId}: ${webhookResponse.status}`);
-        webhookStatus = "failed";
       }
     } catch (err) {
       console.error(`❌ Webhook error for job ${jobId}:`, err);
-      webhookStatus = "error";
     }
-
-    // Return job ID after webhook is sent
-    return new Response(JSON.stringify({
-      status: "completed",
-      job_id: jobId,
-      message: `TTS completed. Webhook ${webhookStatus}.`,
-      audio_url: audioUrl,
-      webhook_status: webhookStatus,
-      timestamp: new Date().toISOString()
-    }), {
-      status: 200,
-      headers: { 
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*"
-      }
-    });
 
   } catch (error) {
-    console.error('TTS Error:', error);
+    console.error(`Background TTS processing error for job ${jobId}:`, error);
     
-    // Send failure webhook if possible and request body was parsed
-    if (requestBody?.webhook_url && requestBody?.episode_id) {
-      const jobId = crypto.randomUUID();
-      fetch(requestBody.webhook_url, {
+    // Send failure webhook for background processing errors
+    try {
+      const failurePayload = {
+        episode_id: episode_id,
+        status: "failed",
+        error: error.message,
+        job_id: jobId,
+        timestamp: new Date().toISOString()
+      };
+
+      const webhookResponse = await fetch(webhook_url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          episode_id: requestBody.episode_id,
-          status: "failed",
-          error: error.message,
-          job_id: jobId,
-          timestamp: new Date().toISOString()
-        })
-      }).catch(() => {
-        // Silently fail webhook on error
+        body: JSON.stringify(failurePayload)
       });
-    }
 
-    return new Response(JSON.stringify({
-      error: error.message,
-      timestamp: new Date().toISOString()
-    }), {
-      status: 500,
-      headers: { 
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*"
+      if (webhookResponse.ok) {
+        console.log(`✅ Failure webhook sent for job ${jobId}`);
+      } else {
+        console.error(`❌ Failure webhook failed for job ${jobId}`);
       }
-    });
+    } catch (webhookError) {
+      console.error(`❌ Failed to send failure webhook for job ${jobId}:`, webhookError);
+    }
   }
 }
 
