@@ -1,10 +1,8 @@
 {
   "version": 1,
-  "description": "Optimized routes for TTS API endpoints only",
+  "description": "API-only routing - Fixed overlapping rules",
   "include": [
     "/api/*"
   ],
-  "exclude": [
-    "/api/_*"
-  ]
+  "exclude": []
 } 
