@@ -4,23 +4,26 @@ from rq import Queue
 from rq.job import Job
 from redis import from_url as redis_from_url
 import os
-from worker import generate_tts_task
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # --- App and Queue Setup ---
 app = FastAPI()
 
 redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
 conn = redis_from_url(redis_url)
-q = Queue(connection=conn)
+q = Queue('default', connection=conn)
 
-AUDIO_DIR = "/data/audio"
+IS_ON_RENDER = 'RENDER' in os.environ
+AUDIO_DIR = "/data/audio" if IS_ON_RENDER else "output"
 
 # --- FastAPI Endpoints ---
 @app.get("/")
 def read_root():
-    return {"message": "TTS API with webhooks is running."}
+    return {"message": "TTS API is running."}
 
-@app.post("/process-tts/")
+@app.post("/process-tts")
 async def queue_tts_job(request: Request):
     data = await request.json()
     
@@ -34,10 +37,12 @@ async def queue_tts_job(request: Request):
     if not all([dialogue, voices, model, api_key, webhook_url, episode_id]):
         raise HTTPException(status_code=400, detail="Missing required fields.")
 
-    base_url = os.getenv("RENDER_EXTERNAL_URL", f"https://{request.headers['host']}")
+    base_url = os.getenv("RENDER_EXTERNAL_URL", f"http://{request.client.host}:{request.client.port}")
 
+    # Enqueue the job by providing the function's import path as a string.
+    # This is the most reliable way to ensure it's picked up by a separate worker.
     job = q.enqueue(
-        generate_tts_task,
+        'tasks_new.generate_tts_task', # The import path: tasks.py -> generate_tts_task function
         kwargs={
             "api_key": api_key,
             "model": model,
@@ -49,6 +54,8 @@ async def queue_tts_job(request: Request):
         },
         job_timeout='15m'
     )
+
+    print(f"Job created with ID: {job.get_id()}")
 
     return {"status": "queued", "job_id": job.get_id()}
 
@@ -65,11 +72,24 @@ def get_job_status(job_id: str):
         "result": job.result,
     }
 
-@app.get("/audio/{job_id}.mp3")
+@app.get("/audio/{job_id}.wav")
 def download_audio(job_id: str):
-    file_path = os.path.join(AUDIO_DIR, f"{job_id}.mp3")
+    file_path = os.path.join(AUDIO_DIR, f"{job_id}.wav")
     if os.path.exists(file_path):
-        return FileResponse(file_path, media_type='audio/mpeg', filename=f"{job_id}.mp3")
+        return FileResponse(file_path, media_type='audio/wav', filename=f"{job_id}.wav")
+    else:
+        raise HTTPException(status_code=404, detail="File not found.")
+
+@app.get("/audio/{job_id}.mp3")
+def download_audio_mp3(job_id: str):
+    # For backward compatibility, also check for .wav files
+    wav_path = os.path.join(AUDIO_DIR, f"{job_id}.wav")
+    mp3_path = os.path.join(AUDIO_DIR, f"{job_id}.mp3")
+    
+    if os.path.exists(wav_path):
+        return FileResponse(wav_path, media_type='audio/wav', filename=f"{job_id}.wav")
+    elif os.path.exists(mp3_path):
+        return FileResponse(mp3_path, media_type='audio/mpeg', filename=f"{job_id}.mp3")
     else:
         raise HTTPException(status_code=404, detail="File not found.")
 

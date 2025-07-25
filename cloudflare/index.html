@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TTS API - Cloudflare Pages</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: white;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        textarea {
+            height: 150px;
+            resize: vertical;
+        }
+        .voice-config {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+        }
+        .voice-pair {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .voice-pair input {
+            flex: 1;
+        }
+        button {
+            background: linear-gradient(45deg, #FF6B6B, #4ECDC4);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .success {
+            border-left: 5px solid #4ECDC4;
+        }
+        .error {
+            border-left: 5px solid #FF6B6B;
+        }
+        .loading {
+            border-left: 5px solid #FFE66D;
+        }
+        .example-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .example-btn {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            width: auto;
+            flex: 1;
+            min-width: 120px;
+        }
+        audio {
+            width: 100%;
+            margin-top: 15px;
+        }
+        .webhook-url {
+            font-family: monospace;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 10px;
+            border-radius: 5px;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎙️ Multi-Speaker TTS API</h1>
+        <p style="text-align: center; opacity: 0.9; margin-bottom: 30px;">
+            Powered by Google Gemini 2.5 • Hosted on Cloudflare Pages
+        </p>
+
+        <form id="ttsForm">
+            <div class="form-group">
+                <label>Example Prompts:</label>
+                <div class="example-buttons">
+                    <button type="button" class="example-btn" onclick="loadExample('podcast')">🎧 Podcast</button>
+                    <button type="button" class="example-btn" onclick="loadExample('conversation')">💬 Conversation</button>
+                    <button type="button" class="example-btn" onclick="loadExample('interview')">🎤 Interview</button>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="dialogue">Dialogue Script:</label>
+                <textarea id="dialogue" placeholder="Enter your multi-speaker dialogue...
+Example:
+Speaker 1: Hello! Welcome to our amazing TTS demo.
+Speaker 2: This is incredible! The voices sound so natural." required></textarea>
+            </div>
+
+            <div class="form-group">
+                <label>Voice Configuration:</label>
+                <div class="voice-config">
+                    <div class="voice-pair">
+                        <input type="text" id="speaker1" placeholder="Speaker 1 name" value="Speaker 1">
+                        <select id="voice1">
+                            <option value="Kore">Kore (Firm)</option>
+                            <option value="Puck" selected>Puck (Upbeat)</option>
+                            <option value="Zephyr">Zephyr (Bright)</option>
+                            <option value="Fenrir">Fenrir (Excitable)</option>
+                            <option value="Gacrux">Gacrux (Mature)</option>
+                            <option value="Enceladus">Enceladus (Breathy)</option>
+                        </select>
+                    </div>
+                    <div class="voice-pair">
+                        <input type="text" id="speaker2" placeholder="Speaker 2 name" value="Speaker 2">
+                        <select id="voice2">
+                            <option value="Kore" selected>Kore (Firm)</option>
+                            <option value="Puck">Puck (Upbeat)</option>
+                            <option value="Zephyr">Zephyr (Bright)</option>
+                            <option value="Fenrir">Fenrir (Excitable)</option>
+                            <option value="Gacrux">Gacrux (Mature)</option>
+                            <option value="Enceladus">Enceladus (Breathy)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="apiKey">Google API Key:</label>
+                <input type="password" id="apiKey" placeholder="Enter your Google API key" required>
+            </div>
+
+            <div class="form-group">
+                <label for="webhookUrl">Webhook URL (optional):</label>
+                <input type="url" id="webhookUrl" placeholder="https://your-webhook-endpoint.com/webhook">
+                <div class="webhook-url" style="margin-top: 10px; font-size: 12px;">
+                    💡 Try: <a href="https://webhook.site" target="_blank" style="color: #4ECDC4;">webhook.site</a> for testing
+                </div>
+            </div>
+
+            <button type="submit" id="generateBtn">🎵 Generate Audio</button>
+        </form>
+
+        <div id="result" style="display: none;"></div>
+    </div>
+
+    <script>
+        const examples = {
+            podcast: {
+                dialogue: `Sarah: Welcome back to Tech Talk Today! I'm your host Sarah, and we're exploring the amazing world of AI.
+
+Alex: Thanks for having me, Sarah! I'm Alex, and I'm absolutely fascinated by how text-to-speech technology has evolved.
+
+Sarah: Alex, what's the most impressive development you've seen recently?
+
+Alex: Honestly, it's how natural these AI voices have become. We're literally listening to artificial voices right now, and they sound completely human!
+
+Sarah: It's incredible! The future of audio content creation is here.`,
+                speaker1: 'Sarah',
+                voice1: 'Kore',
+                speaker2: 'Alex', 
+                voice2: 'Puck'
+            },
+            conversation: {
+                dialogue: `Emma: Hey Jamie! Did you hear about the new AI breakthrough?
+
+Jamie: No way! Tell me everything. I love staying up to date with tech news.
+
+Emma: They've created voices that are practically indistinguishable from real humans. Listen to us right now!
+
+Jamie: Wait... are you telling me we're AI voices? That's absolutely mind-blowing!
+
+Emma: Welcome to the future of digital communication!`,
+                speaker1: 'Emma',
+                voice1: 'Zephyr',
+                speaker2: 'Jamie',
+                voice2: 'Fenrir'
+            },
+            interview: {
+                dialogue: `Dr. Chen: Today I'm speaking with AI researcher Dr. Martinez about breakthrough developments in speech synthesis.
+
+Dr. Martinez: Thank you for having me, Dr. Chen. This technology represents a quantum leap in how humans interact with machines.
+
+Dr. Chen: What makes this generation of AI voices so remarkable?
+
+Dr. Martinez: The emotional nuance, the perfect timing, the natural flow - it's essentially indistinguishable from human speech patterns.
+
+Dr. Chen: Fascinating insights. Thank you for joining us today.`,
+                speaker1: 'Dr. Chen',
+                voice1: 'Gacrux',
+                speaker2: 'Dr. Martinez',
+                voice2: 'Enceladus'
+            }
+        };
+
+        function loadExample(type) {
+            const example = examples[type];
+            document.getElementById('dialogue').value = example.dialogue;
+            document.getElementById('speaker1').value = example.speaker1;
+            document.getElementById('voice1').value = example.voice1;
+            document.getElementById('speaker2').value = example.speaker2;
+            document.getElementById('voice2').value = example.voice2;
+        }
+
+        document.getElementById('ttsForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const btn = document.getElementById('generateBtn');
+            const result = document.getElementById('result');
+            
+            btn.disabled = true;
+            btn.textContent = '🎵 Generating Audio...';
+            
+            result.style.display = 'block';
+            result.className = 'result loading';
+            result.innerHTML = '⏳ Generating your audio... This may take 30-60 seconds.';
+
+            try {
+                const formData = {
+                    dialogue: document.getElementById('dialogue').value,
+                    voices: {
+                        [document.getElementById('speaker1').value]: document.getElementById('voice1').value,
+                        [document.getElementById('speaker2').value]: document.getElementById('voice2').value
+                    },
+                    model: 'gemini-2.5-flash-preview-tts',
+                    api_key: document.getElementById('apiKey').value,
+                    webhook_url: document.getElementById('webhookUrl').value || 'https://webhook.site/test',
+                    episode_id: 'web_demo_' + Date.now()
+                };
+
+                const response = await fetch('/api/tts', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(formData)
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    result.className = 'result success';
+                    result.innerHTML = `
+                        <h3>✅ Audio Generated Successfully!</h3>
+                        <p><strong>Job ID:</strong> ${data.job_id}</p>
+                        <p><strong>Status:</strong> ${data.status}</p>
+                        <audio controls>
+                            <source src="${data.audio_url}" type="audio/wav">
+                            Your browser does not support the audio element.
+                        </audio>
+                        <br><br>
+                        <a href="${data.audio_url}" download="${data.job_id}.wav" style="color: #4ECDC4;">📥 Download Audio File</a>
+                    `;
+                } else {
+                    throw new Error(data.error || 'Unknown error');
+                }
+
+            } catch (error) {
+                result.className = 'result error';
+                result.innerHTML = `
+                    <h3>❌ Error</h3>
+                    <p>${error.message}</p>
+                `;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🎵 Generate Audio';
+            }
+        });
+
+        // Load default example
+        loadExample('podcast');
+    </script>
+</body>
+</html> 

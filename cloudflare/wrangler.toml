@@ -1,0 +1,15 @@
+name = "tts-api"
+pages_build_output_dir = "./"
+
+[env.production]
+kv_namespaces = [
+  { binding = "AUDIO_FILES", id = "your-kv-namespace-id" }
+]
+
+[env.production.vars]
+# Environment variables will be set in Cloudflare dashboard
+
+[[env.production.kv_namespaces]]
+binding = "AUDIO_FILES"
+preview_id = "your-preview-kv-id"
+id = "your-production-kv-id" 
